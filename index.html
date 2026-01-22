@@ -19,8 +19,8 @@
 </head>
 <body>
     <div id="click-to-start">
-        <span>READY? [ CLICK TO START ]</span>
-        <span id="loading-msg">Sounds will be loaded from assets/sounds/</span>
+        <span> READY?</span>
+        <span id="loading-msg">[ CLICK TO START ]</span>
     </div>
     <div id="ui">
         <span>SCORE: <span id="score">0</span></span>
@@ -249,7 +249,7 @@ function loop(timestamp) {
         if (!maze.flat().includes(0) && !maze.flat().includes(2)) { 
             gameActive=false; 
             playExtSound('win');
-            document.getElementById("overlay-text").innerText="YOU WIN!"; 
+            document.getElementById("overlay-text").innerText="YOU WIN!<br>Keyword : Eat"; 
             document.getElementById("game-overlay").style.display="flex"; 
         }
     }
@@ -283,3 +283,4 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
+
