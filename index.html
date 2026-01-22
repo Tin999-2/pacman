@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Neon Maze Runner - Assets Sound</title>
+    <title>Neon Maze Runner - Thick Grid Edition</title>
     <style>
         body { margin: 0; background: #050010; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
         #ui { color: #fff; font-size: 28px; margin-bottom: 10px; text-shadow: 0 0 15px #ff00ff; z-index: 10; display: flex; gap: 20px; align-items: center; }
@@ -49,7 +49,6 @@ const SOUND_FILES = {
 let audioCtx, masterGain, bgmSource, isMuted = false;
 const sounds = {};
 
-// すべての音源を読み込む関数
 async function loadAllSounds() {
     for (const [key, url] of Object.entries(SOUND_FILES)) {
         try {
@@ -92,7 +91,7 @@ function playExtSound(name) {
     source.start(0);
 }
 
-// --- Background ---
+// --- Background (lineWidth changed to 2) ---
 const bgCanvas = document.getElementById("bgCanvas");
 const bctx = bgCanvas.getContext("2d");
 let gridOffset = 0;
@@ -102,7 +101,10 @@ function drawBackground() {
     const centerX = gameRect.left + gameRect.width / 2;
     const centerY = gameRect.top + gameRect.height / 2;
     bctx.fillStyle = "#050010"; bctx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
-    bctx.save(); bctx.strokeStyle = "#ff00ff"; bctx.lineWidth = 1; bctx.globalAlpha = 0.2;
+    bctx.save(); 
+    bctx.strokeStyle = "#ff00ff"; 
+    bctx.lineWidth = 2; // 線を2倍の太さに設定
+    bctx.globalAlpha = 0.2;
     gridOffset = (gridOffset + 0.5) % 40;
     for (let i = 0; i < 30; i++) {
         let y = centerY + (Math.pow(i, 1.6) * 5) + (gridOffset * (i/8));
@@ -213,12 +215,10 @@ function drawGame() {
             else if (t===2) { ctx.fillStyle="#fff"; ctx.shadowBlur=10; ctx.shadowColor="#fff"; ctx.beginPath(); ctx.arc(x+16,y+16,6,0,7); ctx.fill(); ctx.shadowBlur=0; }
         }
     }
-    // Warp Gate Decor
     ctx.strokeStyle="#ff00ff"; ctx.lineWidth=3;
     if (Math.floor(stepCounter/15)%2===0) {
         ctx.strokeRect(0, 9*tileSize+2, 8, 28); ctx.strokeRect(canvas.width-8, 9*tileSize+2, 8, 28);
     }
-    // Entities
     ctx.fillStyle="#ff0"; ctx.beginPath(); ctx.arc(player.x+16, player.y+16, 12, (0.2+Math.sin(stepCounter*0.3)*0.1)*Math.PI, (1.8-Math.sin(stepCounter*0.3)*0.1)*Math.PI); ctx.lineTo(player.x+16, player.y+16); ctx.fill();
     ghosts.forEach(g => {
         ctx.fillStyle = powerMode ? (powerTimer<180 && Math.floor(powerTimer/10)%2===0 ? "#fff":"#00f") : g.color;
@@ -258,9 +258,10 @@ function loop(timestamp) {
 }
 
 document.getElementById("click-to-start").addEventListener('mousedown', async (e) => {
-    e.target.style.pointerEvents = "none";
+    const target = e.currentTarget;
+    target.style.pointerEvents = "none";
     await initAudio(); 
-    e.target.style.display = "none"; 
+    target.style.display = "none"; 
     gameActive = true;
     lastTime = performance.now();
 });
