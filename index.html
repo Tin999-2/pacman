@@ -249,7 +249,7 @@ function loop(timestamp) {
         if (!maze.flat().includes(0) && !maze.flat().includes(2)) { 
             gameActive=false; 
             playExtSound('win');
-            document.getElementById("overlay-text").innerText="YOU WIN!"; 
+            document.getElementById("overlay-text").innerText="YOU WIN!<br>Keyword : Eat"; 
             document.getElementById("game-overlay").style.display="flex"; 
         }
     }
@@ -283,5 +283,6 @@ requestAnimationFrame(loop);
 </body>
 
 </html>
+
 
 
