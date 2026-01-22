@@ -78,18 +78,40 @@ const ghosts = [
 
 // --- Systems ---
 async function initAudio() {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    masterGain = audioCtx.createGain(); masterGain.connect(audioCtx.destination);
-    for (const [key, url] of Object.entries(SOUND_FILES)) {
+    // AudioContextの作成（エラー回避のためtry-catch）
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = audioCtx.createGain(); 
+        masterGain.connect(audioCtx.destination);
+    } catch(e) {
+        console.warn("AudioContext could not be initialized", e);
+        return; // オーディオがダメでも次へ進む
+    }
+
+    // 各音源の読み込み（一つずつ独立してtry-catch）
+    const loadPromises = Object.entries(SOUND_FILES).map(async ([key, url]) => {
         try {
             const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`Not Found: ${url}`);
             const buf = await resp.arrayBuffer();
             sounds[key] = await audioCtx.decodeAudioData(buf);
-        } catch (e) { console.error(e); }
-    }
+        } catch (e) {
+            console.warn(`Sound load failed: ${key}. Background processing will continue.`);
+        }
+    });
+
+    // 全ての読み込み試行が終わるのを待つ（成否に関わらず進む）
+    await Promise.all(loadPromises);
+
+    // BGMの開始
     if (sounds.bgm && !isMuted) {
-        bgmSource = audioCtx.createBufferSource(); bgmSource.buffer = sounds.bgm;
-        bgmSource.loop = true; bgmSource.connect(masterGain); bgmSource.start(0);
+        try {
+            bgmSource = audioCtx.createBufferSource(); 
+            bgmSource.buffer = sounds.bgm;
+            bgmSource.loop = true; 
+            bgmSource.connect(masterGain); 
+            bgmSource.start(0);
+        } catch(e) { console.error("BGM start failed", e); }
     }
 }
 
@@ -257,7 +279,19 @@ function loop(timestamp) {
 }
 
 document.getElementById("click-to-start").addEventListener('click', async (e) => {
-    await initAudio(); e.currentTarget.style.display = "none"; gameActive = true;
+    const splash = e.currentTarget;
+    splash.style.pointerEvents = "none"; // 二重クリック防止
+    splash.querySelector('p').innerText = "INITIALIZING...";
+
+    // オーディオ初期化を待つが、失敗してもゲームは始める
+    try {
+        await initAudio();
+    } catch(e) {
+        console.error("Audio init error:", e);
+    }
+
+    splash.style.display = "none"; 
+    gameActive = true;
     lastTime = performance.now();
 });
 
@@ -271,3 +305,4 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
+
