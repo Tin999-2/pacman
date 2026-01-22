@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Neon Maze Runner - Fix</title>
+    <title>Neon Maze Runner - Thick Grid Edition</title>
     <style>
         body { margin: 0; background: #050010; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
         #ui { color: #fff; font-size: 28px; margin-bottom: 10px; text-shadow: 0 0 15px #ff00ff; z-index: 10; display: flex; gap: 20px; align-items: center; }
@@ -19,8 +19,8 @@
 </head>
 <body>
     <div id="click-to-start">
-        <span>READY?</span>
-        <span id="loading-msg"> [ CLICK TO START ]</span>
+        <span>READY? [ CLICK TO START ]</span>
+        <span id="loading-msg">Sounds will be loaded from assets/sounds/</span>
     </div>
     <div id="ui">
         <span>SCORE: <span id="score">0</span></span>
@@ -49,7 +49,6 @@ const SOUND_FILES = {
 let audioCtx, masterGain, bgmSource, isMuted = false;
 const sounds = {};
 
-// 元の動作が安定していた読み込み方式に戻しました
 async function loadAllSounds() {
     for (const [key, url] of Object.entries(SOUND_FILES)) {
         try {
@@ -92,7 +91,7 @@ function playExtSound(name) {
     source.start(0);
 }
 
-// --- Background (太さ2を維持) ---
+// --- Background (lineWidth changed to 2) ---
 const bgCanvas = document.getElementById("bgCanvas");
 const bctx = bgCanvas.getContext("2d");
 let gridOffset = 0;
@@ -102,7 +101,10 @@ function drawBackground() {
     const centerX = gameRect.left + gameRect.width / 2;
     const centerY = gameRect.top + gameRect.height / 2;
     bctx.fillStyle = "#050010"; bctx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
-    bctx.save(); bctx.strokeStyle = "#ff00ff"; bctx.lineWidth = 2; bctx.globalAlpha = 0.2;
+    bctx.save(); 
+    bctx.strokeStyle = "#ff00ff"; 
+    bctx.lineWidth = 2; // 線を2倍の太さに設定
+    bctx.globalAlpha = 0.2;
     gridOffset = (gridOffset + 0.5) % 40;
     for (let i = 0; i < 30; i++) {
         let y = centerY + (Math.pow(i, 1.6) * 5) + (gridOffset * (i/8));
@@ -146,8 +148,8 @@ const GHOST_PIXEL_SPEED = 105;
 
 const player = { x: 9 * tileSize, y: 13 * tileSize, dx: 0, dy: 0, nextDx: 0, nextDy: 0 };
 const ghosts = [
-    { id: 0, x: 9 * tileSize, y: 9 * tileSize, dx: 0, dy: -1, color: "#ff4d4d", type: "chase" },
-    { id: 1, x: 9 * tileSize, y: 7 * tileSize, dx: 0, dy: -1, color: "#ffb852", type: "random" }
+    { x: 9 * tileSize, y: 9 * tileSize, dx: 0, dy: -1, color: "#ff4d4d", type: "chase" },
+    { x: 9 * tileSize, y: 7 * tileSize, dx: 0, dy: -1, color: "#ffb852", type: "random" }
 ];
 
 function isWall(tx, ty, isGhost = false) {
@@ -193,26 +195,12 @@ function updateEntity(ent, speed, isGhost) {
             const back = {x: -ent.dx, y: -ent.dy};
             let valid = dirs.filter(d => !isWall(tx + d.x, ty + d.y, true) && (d.x !== back.x || d.y !== back.y));
             if (valid.length === 0) valid = [back];
-            
-            // 修正：ゴースト重なり防止ロジック
-            valid.sort((a,b) => {
-                const distA = Math.hypot((tx+a.x)*tileSize-player.x, (ty+a.y)*tileSize-player.y);
-                const distB = Math.hypot((tx+b.x)*tileSize-player.x, (ty+b.y)*tileSize-player.y);
-                
-                const otherGhost = ghosts.find(g => g.id !== ent.id);
-                const otherTx = Math.round(otherGhost.x/tileSize);
-                const otherTy = Math.round(otherGhost.y/tileSize);
-                const penaltyA = (tx+a.x === otherTx && ty+a.y === otherTy) ? 1000 : 0;
-                const penaltyB = (tx+b.x === otherTx && ty+b.y === otherTy) ? 1000 : 0;
-
-                return powerMode ? (distB + penaltyB) - (distA + penaltyA) : (distA + penaltyA) - (distB + penaltyB);
-            });
-            
-            if (ent.type === "random" && Math.random() < 0.15 && valid.length > 1) {
-                ent.dx = valid[1].x; ent.dy = valid[1].y;
+            if (powerMode) {
+                valid.sort((a,b) => Math.hypot((tx+b.x)*tileSize-player.x, (ty+b.y)*tileSize-player.y) - Math.hypot((tx+a.x)*tileSize-player.x, (ty+a.y)*tileSize-player.y));
             } else {
-                ent.dx = valid[0].x; ent.dy = valid[0].y;
+                valid.sort((a,b) => Math.hypot((tx+a.x)*tileSize-player.x, (ty+a.y)*tileSize-player.y) - Math.hypot((tx+b.x)*tileSize-player.x, (ty+b.y)*tileSize-player.y));
             }
+            ent.dx = valid[0].x; ent.dy = valid[0].y;
         }
     }
 }
@@ -269,11 +257,11 @@ function loop(timestamp) {
     stepCounter++; requestAnimationFrame(loop);
 }
 
-// ここを元の安定していた記述に完全に戻しました
 document.getElementById("click-to-start").addEventListener('mousedown', async (e) => {
-    e.currentTarget.style.pointerEvents = "none";
+    const target = e.currentTarget;
+    target.style.pointerEvents = "none";
     await initAudio(); 
-    e.currentTarget.style.display = "none"; 
+    target.style.display = "none"; 
     gameActive = true;
     lastTime = performance.now();
 });
@@ -295,4 +283,3 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
-
