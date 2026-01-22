@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Neon Maze Runner - Ghost Collision Fix</title>
+    <title>Neon Maze Runner - Fix</title>
     <style>
         body { margin: 0; background: #050010; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
         #ui { color: #fff; font-size: 28px; margin-bottom: 10px; text-shadow: 0 0 15px #ff00ff; z-index: 10; display: flex; gap: 20px; align-items: center; }
@@ -36,11 +36,20 @@
     </div>
 
 <script>
+// --- Sound Path Configuration ---
 const PATH = 'assets/sounds/';
-const SOUND_FILES = { bgm: PATH+'bgm.mp3', warp: PATH+'warp.mp3', powerup: PATH+'powerup.mp3', eatGhost: PATH+'eat_ghost.mp3', win: PATH+'win.mp3' };
+const SOUND_FILES = {
+    bgm: PATH + 'bgm.mp3',
+    warp: PATH + 'warp.mp3',
+    powerup: PATH + 'powerup.mp3',
+    eatGhost: PATH + 'eat_ghost.mp3',
+    win: PATH + 'win.mp3'
+};
+
 let audioCtx, masterGain, bgmSource, isMuted = false;
 const sounds = {};
 
+// 元の動作が安定していた読み込み方式に戻しました
 async function loadAllSounds() {
     for (const [key, url] of Object.entries(SOUND_FILES)) {
         try {
@@ -48,32 +57,42 @@ async function loadAllSounds() {
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const arrayBuffer = await response.arrayBuffer();
             sounds[key] = await audioCtx.decodeAudioData(arrayBuffer);
-        } catch (e) { console.error(`Sound Error: ${key}`, e); }
+        } catch (e) {
+            console.error(`Sound Error: ${key} at ${url}`, e);
+        }
     }
 }
 
 async function initAudio() {
     if (audioCtx) return;
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    masterGain = audioCtx.createGain(); masterGain.connect(audioCtx.destination);
+    masterGain = audioCtx.createGain();
+    masterGain.connect(audioCtx.destination);
+    
     document.getElementById("loading-msg").innerText = "LOADING SOUNDS...";
-    await loadAllSounds(); startBGM();
+    await loadAllSounds();
+    startBGM();
 }
 
 function startBGM() {
     if (!sounds.bgm || isMuted) return;
     if (bgmSource) bgmSource.stop();
-    bgmSource = audioCtx.createBufferSource(); bgmSource.buffer = sounds.bgm;
-    bgmSource.loop = true; bgmSource.connect(masterGain); bgmSource.start(0);
+    bgmSource = audioCtx.createBufferSource();
+    bgmSource.buffer = sounds.bgm;
+    bgmSource.loop = true;
+    bgmSource.connect(masterGain);
+    bgmSource.start(0);
 }
 
 function playExtSound(name) {
     if (!sounds[name] || isMuted) return;
-    const source = audioCtx.createBufferSource(); source.buffer = sounds[name];
-    source.connect(masterGain); source.start(0);
+    const source = audioCtx.createBufferSource();
+    source.buffer = sounds[name];
+    source.connect(masterGain);
+    source.start(0);
 }
 
-// --- Background ---
+// --- Background (太さ2を維持) ---
 const bgCanvas = document.getElementById("bgCanvas");
 const bctx = bgCanvas.getContext("2d");
 let gridOffset = 0;
@@ -119,8 +138,11 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = cols * tileSize; canvas.height = rows * tileSize;
 
-let score = 0; let powerMode = false; let powerTimer = 0; let gameActive = false; let stepCounter = 0; let lastTime = 0;
-const PLAYER_PIXEL_SPEED = 125; const GHOST_PIXEL_SPEED = 105;
+let score = 0; let powerMode = false; let powerTimer = 0; let gameActive = false; let stepCounter = 0;
+let lastTime = 0;
+
+const PLAYER_PIXEL_SPEED = 125; 
+const GHOST_PIXEL_SPEED = 105;
 
 const player = { x: 9 * tileSize, y: 13 * tileSize, dx: 0, dy: 0, nextDx: 0, nextDy: 0 };
 const ghosts = [
@@ -130,16 +152,24 @@ const ghosts = [
 
 function isWall(tx, ty, isGhost = false) {
     if (ty < 0 || ty >= rows) return true;
-    if (tx < 0 || tx >= cols) return ty === 9 ? isGhost : true;
+    if (tx < 0 || tx >= cols) {
+        if (ty === 9) return isGhost;
+        return true;
+    }
     if (isGhost && ty === 9 && (tx === 0 || tx === cols-1)) return true;
     return maze[ty][tx] === 1;
 }
 
 function updateEntity(ent, speed, isGhost) {
-    const prevX = ent.x; const prevY = ent.y;
-    ent.x += ent.dx * speed; ent.y += ent.dy * speed;
-    const tx = Math.round(ent.x / tileSize); const ty = Math.round(ent.y / tileSize);
-    const cx = tx * tileSize; const cy = ty * tileSize;
+    const prevX = ent.x;
+    const prevY = ent.y;
+    ent.x += ent.dx * speed;
+    ent.y += ent.dy * speed;
+
+    const tx = Math.round(ent.x / tileSize);
+    const ty = Math.round(ent.y / tileSize);
+    const cx = tx * tileSize;
+    const cy = ty * tileSize;
 
     if ((prevX < cx && ent.x >= cx) || (prevX > cx && ent.x <= cx) || (prevY < cy && ent.y >= cy) || (prevY > cy && ent.y <= cy) || (ent.dx === 0 && ent.dy === 0)) {
         ent.x = cx; ent.y = cy;
@@ -149,7 +179,12 @@ function updateEntity(ent, speed, isGhost) {
             const curTx = Math.round(ent.x / tileSize);
             if (curTx >= 0 && curTx < cols) {
                 if (maze[ty][curTx] === 0) { maze[ty][curTx] = -1; score += 10; }
-                if (maze[ty][curTx] === 2) { maze[ty][curTx] = -1; score += 50; powerMode = true; powerTimer = 720; playExtSound('powerup'); }
+                if (maze[ty][curTx] === 2) { 
+                    maze[ty][curTx] = -1; score += 50; 
+                    powerMode = true; 
+                    powerTimer = 720;
+                    playExtSound('powerup');
+                }
             }
             if (!isWall(curTx + ent.nextDx, ty + ent.nextDy, false)) { ent.dx = ent.nextDx; ent.dy = ent.nextDy; }
             else if (isWall(curTx + ent.dx, ty + ent.dy, false)) { ent.dx = 0; ent.dy = 0; }
@@ -159,11 +194,11 @@ function updateEntity(ent, speed, isGhost) {
             let valid = dirs.filter(d => !isWall(tx + d.x, ty + d.y, true) && (d.x !== back.x || d.y !== back.y));
             if (valid.length === 0) valid = [back];
             
+            // 修正：ゴースト重なり防止ロジック
             valid.sort((a,b) => {
                 const distA = Math.hypot((tx+a.x)*tileSize-player.x, (ty+a.y)*tileSize-player.y);
                 const distB = Math.hypot((tx+b.x)*tileSize-player.x, (ty+b.y)*tileSize-player.y);
                 
-                // 衝突回避ロジック: 他のゴーストの移動先と被るならスコアを悪くする
                 const otherGhost = ghosts.find(g => g.id !== ent.id);
                 const otherTx = Math.round(otherGhost.x/tileSize);
                 const otherTy = Math.round(otherGhost.y/tileSize);
@@ -172,9 +207,12 @@ function updateEntity(ent, speed, isGhost) {
 
                 return powerMode ? (distB + penaltyB) - (distA + penaltyA) : (distA + penaltyA) - (distB + penaltyB);
             });
-            // オレンジ色のゴースト(type:random)は時々あえて2番目に良い道を選ぶ
-            if (ent.type === "random" && Math.random() < 0.2 && valid.length > 1) ent.dx = valid[1].x, ent.dy = valid[1].y;
-            else ent.dx = valid[0].x, ent.dy = valid[0].y;
+            
+            if (ent.type === "random" && Math.random() < 0.15 && valid.length > 1) {
+                ent.dx = valid[1].x; ent.dy = valid[1].y;
+            } else {
+                ent.dx = valid[0].x; ent.dy = valid[0].y;
+            }
         }
     }
 }
@@ -190,7 +228,9 @@ function drawGame() {
         }
     }
     ctx.strokeStyle="#ff00ff"; ctx.lineWidth=3;
-    if (Math.floor(stepCounter/15)%2===0) { ctx.strokeRect(0, 9*tileSize+2, 8, 28); ctx.strokeRect(canvas.width-8, 9*tileSize+2, 8, 28); }
+    if (Math.floor(stepCounter/15)%2===0) {
+        ctx.strokeRect(0, 9*tileSize+2, 8, 28); ctx.strokeRect(canvas.width-8, 9*tileSize+2, 8, 28);
+    }
     ctx.fillStyle="#ff0"; ctx.beginPath(); ctx.arc(player.x+16, player.y+16, 12, (0.2+Math.sin(stepCounter*0.3)*0.1)*Math.PI, (1.8-Math.sin(stepCounter*0.3)*0.1)*Math.PI); ctx.lineTo(player.x+16, player.y+16); ctx.fill();
     ghosts.forEach(g => {
         ctx.fillStyle = powerMode ? (powerTimer<180 && Math.floor(powerTimer/10)%2===0 ? "#fff":"#00f") : g.color;
@@ -201,31 +241,47 @@ function drawGame() {
 function loop(timestamp) {
     if (!lastTime) lastTime = timestamp;
     const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
-    lastTime = timestamp; drawBackground();
+    lastTime = timestamp;
+    drawBackground();
     if (gameActive) {
         updateEntity(player, PLAYER_PIXEL_SPEED * dt, false);
         if (powerMode) { powerTimer--; if (powerTimer <= 0) powerMode = false; }
         ghosts.forEach(g => {
             updateEntity(g, (powerMode ? GHOST_PIXEL_SPEED * 0.5 : GHOST_PIXEL_SPEED) * dt, true);
             if (Math.hypot(player.x-g.x, player.y-g.y) < 22) {
-                if (powerMode) { g.x=9*tileSize; g.y=9*tileSize; score+=200; playExtSound('eatGhost'); }
-                else { gameActive=false; document.getElementById("game-overlay").style.display="flex"; }
+                if (powerMode) { 
+                    g.x=9*tileSize; g.y=9*tileSize; score+=200; 
+                    playExtSound('eatGhost');
+                } else { 
+                    gameActive=false; 
+                    document.getElementById("game-overlay").style.display="flex"; 
+                }
             }
         });
-        if (!maze.flat().includes(0) && !maze.flat().includes(2)) { gameActive=false; playExtSound('win'); document.getElementById("overlay-text").innerText="Keyword : Eat"; document.getElementById("game-overlay").style.display="flex"; }
+        if (!maze.flat().includes(0) && !maze.flat().includes(2)) { 
+            gameActive=false; 
+            playExtSound('win');
+            document.getElementById("overlay-text").innerText="YOU WIN!"; 
+            document.getElementById("game-overlay").style.display="flex"; 
+        }
     }
     drawGame(); document.getElementById("score").innerText = score;
     stepCounter++; requestAnimationFrame(loop);
 }
 
+// ここを元の安定していた記述に完全に戻しました
 document.getElementById("click-to-start").addEventListener('mousedown', async (e) => {
     e.currentTarget.style.pointerEvents = "none";
-    await initAudio(); e.currentTarget.style.display = "none"; gameActive = true;
+    await initAudio(); 
+    e.currentTarget.style.display = "none"; 
+    gameActive = true;
     lastTime = performance.now();
 });
 
 document.getElementById("mute-btn").addEventListener('click', (e) => {
-    isMuted = !isMuted; if (isMuted && bgmSource) { try { bgmSource.stop(); } catch(e){} } else if (!isMuted) startBGM();
+    isMuted = !isMuted; 
+    if (isMuted && bgmSource) { try { bgmSource.stop(); } catch(e){} }
+    else if (!isMuted) startBGM();
     e.target.innerText = isMuted ? "SOUND: OFF" : "SOUND: ON";
 });
 
