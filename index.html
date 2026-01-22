@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Neon Maze Runner - Glow & Particles</title>
+    <title>Neon Maze Runner - Ultimate Stability</title>
     <style>
         body { margin: 0; background: #050010; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
         #ui { color: #fff; font-size: 28px; margin-bottom: 10px; text-shadow: 0 0 15px #00d4ff; z-index: 10; display: flex; gap: 20px; align-items: center; }
@@ -11,13 +11,12 @@
         #bgCanvas { position: fixed; top: 0; left: 0; z-index: 1; pointer-events: none; width: 100vw; height: 100vh; }
         #game-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
         #game-overlay h1 { color: #fff; font-size: 60px; text-shadow: 0 0 20px #00d4ff; margin-bottom: 20px; }
-        #click-to-start { position: fixed; color: #ff00ff; font-weight: bold; font-size: 24px; z-index: 200; background: #050010; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; text-shadow: 0 0 10px #ff00ff; }
+        #click-to-start { position: fixed; top: 0; left: 0; width: 100%; height: 100%; color: #ff00ff; font-weight: bold; font-size: 24px; z-index: 200; background: #050010; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; text-shadow: 0 0 10px #ff00ff; }
     </style>
 </head>
 <body>
     <div id="click-to-start">
         <span>READY? [ CLICK TO START ]</span>
-        <small style="font-size: 12px; margin-top: 10px; color: #00d4ff;">Assets: assets/sounds/</small>
     </div>
     <div id="ui">
         <span>SCORE: <span id="score">0</span></span>
@@ -33,35 +32,44 @@
     </div>
 
 <script>
-// --- 音源設定 ---
+// --- 音源管理（エラー耐性強化版） ---
 const PATH = 'assets/sounds/';
 const SOUND_FILES = { bgm: PATH+'bgm.mp3', warp: PATH+'warp.mp3', powerup: PATH+'powerup.mp3', eatGhost: PATH+'eat_ghost.mp3', win: PATH+'win.mp3' };
 let audioCtx, masterGain, bgmSource, isMuted = false, sounds = {};
 
-async function initAudio() {
+// 独立した読み込み関数（エラーを出しても上位に影響させない）
+async function loadOneSound(key, url) {
     try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        masterGain = audioCtx.createGain(); masterGain.connect(audioCtx.destination);
-        for (const [key, url] of Object.entries(SOUND_FILES)) {
-            try {
-                const resp = await fetch(url);
-                const buf = await resp.arrayBuffer();
-                sounds[key] = await audioCtx.decodeAudioData(buf);
-            } catch (e) { console.warn("Missing sound:", key); }
-        }
-        if (sounds.bgm && !isMuted) {
-            bgmSource = audioCtx.createBufferSource(); bgmSource.buffer = sounds.bgm;
-            bgmSource.loop = true; bgmSource.connect(masterGain); bgmSource.start(0);
-        }
-    } catch(e) { console.error("Audio init failed"); }
+        const resp = await fetch(url);
+        if (!resp.ok) return;
+        const buf = await resp.arrayBuffer();
+        sounds[key] = await audioCtx.decodeAudioData(buf);
+        if (key === 'bgm' && !isMuted) playBGM();
+    } catch (e) { console.warn("Sound bypass:", key); }
 }
 
-function playExtSound(name) { if (sounds[name] && !isMuted) { const s = audioCtx.createBufferSource(); s.buffer = sounds[name]; s.connect(masterGain); s.start(0); } }
+function playBGM() {
+    if (!sounds.bgm || bgmSource) return;
+    bgmSource = audioCtx.createBufferSource();
+    bgmSource.buffer = sounds.bgm;
+    bgmSource.loop = true;
+    bgmSource.connect(masterGain);
+    bgmSource.start(0);
+}
 
-// --- ゲーム設定 ---
+function playExtSound(name) {
+    if (sounds[name] && !isMuted && audioCtx) {
+        const s = audioCtx.createBufferSource();
+        s.buffer = sounds[name];
+        s.connect(masterGain);
+        s.start(0);
+    }
+}
+
+// --- ゲーム定数 ---
 const tileSize = 32, rows = 19, cols = 19;
 let score = 0, powerMode = false, powerTimer = 0, gameActive = false, stepCounter = 0, lastTime = 0;
-let particles = []; // パーティクル配列
+let particles = [];
 
 const leftMap = [
     [1,1,1,1,1,1,1,1,1,1], [1,2,0,0,0,1,0,0,0,1], [1,0,1,1,0,1,0,1,0,1], 
@@ -92,8 +100,7 @@ function createParticles(x, y, color) {
 
 function drawGame() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    
-    // 迷路の描画（グロー効果付き）
+    // 迷路とグロー
     ctx.shadowBlur = 10; ctx.shadowColor = "#00d4ff";
     for (let r=0; r<rows; r++) {
         for (let c=0; c<cols; c++) {
@@ -103,8 +110,7 @@ function drawGame() {
             else if (t===2) { ctx.fillStyle="#fff"; ctx.shadowBlur=15; ctx.beginPath(); ctx.arc(x+16,y+16,6,0,7); ctx.fill(); }
         }
     }
-
-    // パーティクルの更新と描画
+    // パーティクル
     ctx.shadowBlur = 0;
     particles = particles.filter(p => p.life > 0);
     particles.forEach(p => {
@@ -113,12 +119,9 @@ function drawGame() {
         ctx.fillRect(p.x, p.y, 2, 2);
     });
     ctx.globalAlpha = 1.0;
-
-    // プレイヤー
+    // プレイヤー・ゴースト
     ctx.shadowBlur = 15; ctx.shadowColor = "#ff0"; ctx.fillStyle="#ff0";
     ctx.beginPath(); ctx.arc(player.x+16, player.y+16, 12, (0.2+Math.sin(stepCounter*0.3)*0.1)*Math.PI, (1.8-Math.sin(stepCounter*0.3)*0.1)*Math.PI); ctx.lineTo(player.x+16, player.y+16); ctx.fill();
-
-    // ゴースト
     ghosts.forEach(g => {
         let col = powerMode ? (powerTimer<120 && Math.floor(powerTimer/10)%2===0 ? "#fff":"#00f") : g.color;
         ctx.shadowBlur = 15; ctx.shadowColor = col; ctx.fillStyle = col;
@@ -127,7 +130,6 @@ function drawGame() {
     ctx.shadowBlur = 0;
 }
 
-// ロジック部分は「治った」と言われた安定版を維持
 function isWall(tx, ty, isGhost) {
     if (ty < 0 || ty >= rows) return true;
     if (tx < 0 || tx >= cols) return ty === 9 ? isGhost : true;
@@ -167,18 +169,10 @@ function updateEntity(ent, speed, isGhost) {
     }
 }
 
-const bgCanvas = document.getElementById("bgCanvas");
-const bctx = bgCanvas.getContext("2d");
-function drawBackground() {
-    bgCanvas.width = window.innerWidth; bgCanvas.height = window.innerHeight;
-    bctx.fillStyle = "#050010"; bctx.fillRect(0,0,bgCanvas.width,bgCanvas.height);
-}
-
 function loop(timestamp) {
     if (!lastTime) lastTime = timestamp;
     const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
     lastTime = timestamp;
-    drawBackground();
     if (gameActive) {
         updateEntity(player, PLAYER_PIXEL_SPEED * dt, false);
         if (powerMode) { powerTimer--; if (powerTimer <= 0) powerMode = false; }
@@ -191,22 +185,47 @@ function loop(timestamp) {
         });
         if (!maze.flat().includes(0) && !maze.flat().includes(2)) { gameActive=false; playExtSound('win'); document.getElementById("overlay-text").innerText="YOU WIN!"; document.getElementById("game-overlay").style.display="flex"; }
     }
-    drawGame(); document.getElementById("score").innerText = score;
-    stepCounter++; requestAnimationFrame(loop);
+    drawGame();
+    document.getElementById("score").innerText = score;
+    stepCounter++;
+    requestAnimationFrame(loop);
 }
 
-document.getElementById("click-to-start").addEventListener('click', async (e) => {
-    e.currentTarget.style.pointerEvents = "none";
-    await initAudio(); e.currentTarget.style.display = "none"; gameActive = true;
+// --- 究極の安定化クリック処理 ---
+document.getElementById("click-to-start").onclick = function() {
+    this.style.display = "none";
+    
+    // AudioContextの生成を分離
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = audioCtx.createGain();
+        masterGain.connect(audioCtx.destination);
+        // 各音源のロードを裏側で回す（成否を待たない）
+        Object.entries(SOUND_FILES).forEach(([key, url]) => loadOneSound(key, url));
+    } catch(e) { console.error("Audio initialization failed."); }
+
+    // ゲームを強制開始
+    gameActive = true;
     lastTime = performance.now();
-});
+};
+
 document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowUp") { player.nextDx = 0; player.nextDy = -1; }
     if (e.key === "ArrowDown") { player.nextDx = 0; player.nextDy = 1; }
     if (e.key === "ArrowLeft") { player.nextDx = -1; player.nextDy = 0; }
     if (e.key === "ArrowRight") { player.nextDx = 1; player.nextDy = 0; }
 });
-requestAnimationFrame(loop);
+
+// 背景（グリッドなし、単色で安定化）
+const bgCanvas = document.getElementById("bgCanvas");
+const bctx = bgCanvas.getContext("2d");
+function drawBackground() {
+    bgCanvas.width = window.innerWidth; bgCanvas.height = window.innerHeight;
+    bctx.fillStyle = "#050010"; bctx.fillRect(0,0,bgCanvas.width,bgCanvas.height);
+}
+function initialDraw() { drawBackground(); drawGame(); requestAnimationFrame(loop); }
+initialDraw();
+
 </script>
 </body>
 </html>
