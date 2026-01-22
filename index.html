@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Maze Runner - Assets Sound</title>
+    <style>
+        body { margin: 0; background: #050010; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
+        #ui { color: #fff; font-size: 28px; margin-bottom: 10px; text-shadow: 0 0 15px #ff00ff; z-index: 10; display: flex; gap: 20px; align-items: center; }
+        #container { position: relative; display: flex; align-items: center; justify-content: center; }
+        canvas { border: 2px solid #00d4ff; box-shadow: 0 0 30px rgba(0, 212, 255, 0.3); background: rgba(0,0,0,0.9); z-index: 5; position: relative; }
+        #bgCanvas { position: fixed; top: 0; left: 0; z-index: 1; pointer-events: none; width: 100vw; height: 100vh; }
+        #game-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        #game-overlay h1 { color: #fff; font-size: 60px; text-shadow: 0 0 20px #00d4ff; margin-bottom: 20px; }
+        .btn { padding: 10px 20px; font-size: 18px; cursor: pointer; background: transparent; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 5px; font-weight: bold; }
+        #click-to-start { position: fixed; color: #ff00ff; font-weight: bold; font-size: 24px; z-index: 200; background: #050010; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; cursor: pointer; text-shadow: 0 0 10px #ff00ff; flex-direction: column; gap: 10px; }
+        #loading-msg { font-size: 14px; color: #00d4ff; }
+        #mute-btn { cursor: pointer; font-size: 20px; background: none; border: 1px solid #fff; color: #fff; border-radius: 5px; padding: 5px 10px; }
+    </style>
+</head>
+<body>
+    <div id="click-to-start">
+        <span>READY? [ CLICK TO START ]</span>
+        <span id="loading-msg">Sounds will be loaded from assets/sounds/</span>
+    </div>
+    <div id="ui">
+        <span>SCORE: <span id="score">0</span></span>
+        <button id="mute-btn">SOUND: ON</button>
+    </div>
+    <div id="container">
+        <canvas id="bgCanvas"></canvas>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+    <div id="game-overlay">
+        <h1 id="overlay-text">GAME OVER</h1>
+        <button class="btn" onclick="location.reload()">RETRY</button>
+    </div>
+
+<script>
+// --- Sound Path Configuration ---
+const PATH = 'assets/sounds/';
+const SOUND_FILES = {
+    bgm: PATH + 'bgm.mp3',
+    warp: PATH + 'warp.mp3',
+    powerup: PATH + 'powerup.mp3',
+    eatGhost: PATH + 'eat_ghost.mp3',
+    win: PATH + 'win.mp3'
+};
+
+let audioCtx, masterGain, bgmSource, isMuted = false;
+const sounds = {};
+
+// すべての音源を読み込む関数
+async function loadAllSounds() {
+    for (const [key, url] of Object.entries(SOUND_FILES)) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const arrayBuffer = await response.arrayBuffer();
+            sounds[key] = await audioCtx.decodeAudioData(arrayBuffer);
+        } catch (e) {
+            console.error(`Sound Error: ${key} at ${url}`, e);
+        }
+    }
+}
+
+async function initAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.connect(audioCtx.destination);
+    
+    document.getElementById("loading-msg").innerText = "LOADING SOUNDS...";
+    await loadAllSounds();
+    startBGM();
+}
+
+function startBGM() {
+    if (!sounds.bgm || isMuted) return;
+    if (bgmSource) bgmSource.stop();
+    bgmSource = audioCtx.createBufferSource();
+    bgmSource.buffer = sounds.bgm;
+    bgmSource.loop = true;
+    bgmSource.connect(masterGain);
+    bgmSource.start(0);
+}
+
+function playExtSound(name) {
+    if (!sounds[name] || isMuted) return;
+    const source = audioCtx.createBufferSource();
+    source.buffer = sounds[name];
+    source.connect(masterGain);
+    source.start(0);
+}
+
+// --- Background ---
+const bgCanvas = document.getElementById("bgCanvas");
+const bctx = bgCanvas.getContext("2d");
+let gridOffset = 0;
+function drawBackground() {
+    bgCanvas.width = window.innerWidth; bgCanvas.height = window.innerHeight;
+    const gameRect = document.getElementById("gameCanvas").getBoundingClientRect();
+    const centerX = gameRect.left + gameRect.width / 2;
+    const centerY = gameRect.top + gameRect.height / 2;
+    bctx.fillStyle = "#050010"; bctx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+    bctx.save(); bctx.strokeStyle = "#ff00ff"; bctx.lineWidth = 1; bctx.globalAlpha = 0.2;
+    gridOffset = (gridOffset + 0.5) % 40;
+    for (let i = 0; i < 30; i++) {
+        let y = centerY + (Math.pow(i, 1.6) * 5) + (gridOffset * (i/8));
+        if (y > bgCanvas.height) continue;
+        bctx.beginPath(); bctx.moveTo(0, y); bctx.lineTo(bgCanvas.width, y); bctx.stroke();
+    }
+    for (let i = -15; i <= 15; i++) {
+        bctx.beginPath(); bctx.moveTo(centerX, centerY);
+        bctx.lineTo(centerX + i * (bgCanvas.width / 8), bgCanvas.height); bctx.stroke();
+    }
+    bctx.restore();
+}
+
+// --- Maze ---
+const tileSize = 32; const rows = 19; const cols = 19;
+const leftMap = [
+    [1,1,1,1,1,1,1,1,1,1], [1,2,0,0,0,1,0,0,0,1], [1,0,1,1,0,1,0,1,0,1], 
+    [1,0,0,0,0,0,0,1,0,1], [1,0,1,1,0,1,1,1,0,1], [1,0,0,0,0,0,0,0,0,0], 
+    [1,1,1,1,0,1,1,1,1,1], [1,1,1,1,0,1,-1,-1,-1,-1], [1,1,1,1,0,1,-1,1,1,-1], 
+    [-1,-1,-1,-1,-1,-1,-1,1,-1,-1], [1,1,1,1,0,1,-1,1,1,1], [1,1,1,1,0,1,-1,-1,-1,-1], 
+    [1,0,0,0,0,1,0,1,1,1], [1,0,1,1,0,0,0,0,0,0], [1,0,0,0,0,1,1,1,0,1], 
+    [1,1,1,1,0,0,0,0,0,0], [1,0,0,0,0,1,0,1,0,1], [1,2,1,1,0,0,0,0,0,1], [1,1,1,1,1,1,1,1,1,1]  
+];
+const maze = [];
+for (let r=0; r<rows; r++) {
+    const row = [];
+    for (let c=0; c<10; c++) row.push(leftMap[r][c]);
+    for (let c=8; c>=0; c--) row.push(leftMap[r][c]);
+    maze.push(row);
+}
+
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = cols * tileSize; canvas.height = rows * tileSize;
+
+let score = 0; let powerMode = false; let powerTimer = 0; let gameActive = false; let stepCounter = 0;
+let lastTime = 0;
+
+const PLAYER_PIXEL_SPEED = 125; 
+const GHOST_PIXEL_SPEED = 105;
+
+const player = { x: 9 * tileSize, y: 13 * tileSize, dx: 0, dy: 0, nextDx: 0, nextDy: 0 };
+const ghosts = [
+    { x: 9 * tileSize, y: 9 * tileSize, dx: 0, dy: -1, color: "#ff4d4d", type: "chase" },
+    { x: 9 * tileSize, y: 7 * tileSize, dx: 0, dy: -1, color: "#ffb852", type: "random" }
+];
+
+function isWall(tx, ty, isGhost = false) {
+    if (ty < 0 || ty >= rows) return true;
+    if (tx < 0 || tx >= cols) {
+        if (ty === 9) return isGhost;
+        return true;
+    }
+    if (isGhost && ty === 9 && (tx === 0 || tx === cols-1)) return true;
+    return maze[ty][tx] === 1;
+}
+
+function updateEntity(ent, speed, isGhost) {
+    const prevX = ent.x;
+    const prevY = ent.y;
+    ent.x += ent.dx * speed;
+    ent.y += ent.dy * speed;
+
+    const tx = Math.round(ent.x / tileSize);
+    const ty = Math.round(ent.y / tileSize);
+    const cx = tx * tileSize;
+    const cy = ty * tileSize;
+
+    if ((prevX < cx && ent.x >= cx) || (prevX > cx && ent.x <= cx) || (prevY < cy && ent.y >= cy) || (prevY > cy && ent.y <= cy) || (ent.dx === 0 && ent.dy === 0)) {
+        ent.x = cx; ent.y = cy;
+        if (!isGhost) {
+            if (tx < 0) { ent.x = (cols-1) * tileSize; playExtSound('warp'); }
+            else if (tx >= cols) { ent.x = 0; playExtSound('warp'); }
+            const curTx = Math.round(ent.x / tileSize);
+            if (curTx >= 0 && curTx < cols) {
+                if (maze[ty][curTx] === 0) { maze[ty][curTx] = -1; score += 10; }
+                if (maze[ty][curTx] === 2) { 
+                    maze[ty][curTx] = -1; score += 50; 
+                    powerMode = true; 
+                    powerTimer = 720;
+                    playExtSound('powerup');
+                }
+            }
+            if (!isWall(curTx + ent.nextDx, ty + ent.nextDy, false)) { ent.dx = ent.nextDx; ent.dy = ent.nextDy; }
+            else if (isWall(curTx + ent.dx, ty + ent.dy, false)) { ent.dx = 0; ent.dy = 0; }
+        } else {
+            const dirs = [{x:1,y:0}, {x:-1,y:0}, {x:0,y:1}, {x:0,y:-1}];
+            const back = {x: -ent.dx, y: -ent.dy};
+            let valid = dirs.filter(d => !isWall(tx + d.x, ty + d.y, true) && (d.x !== back.x || d.y !== back.y));
+            if (valid.length === 0) valid = [back];
+            if (powerMode) {
+                valid.sort((a,b) => Math.hypot((tx+b.x)*tileSize-player.x, (ty+b.y)*tileSize-player.y) - Math.hypot((tx+a.x)*tileSize-player.x, (ty+a.y)*tileSize-player.y));
+            } else {
+                valid.sort((a,b) => Math.hypot((tx+a.x)*tileSize-player.x, (ty+a.y)*tileSize-player.y) - Math.hypot((tx+b.x)*tileSize-player.x, (ty+b.y)*tileSize-player.y));
+            }
+            ent.dx = valid[0].x; ent.dy = valid[0].y;
+        }
+    }
+}
+
+function drawGame() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for (let r=0; r<rows; r++) {
+        for (let c=0; c<cols; c++) {
+            let x=c*tileSize, y=r*tileSize, t=maze[r][c];
+            if (t===1) { ctx.strokeStyle="#00d4ff"; ctx.lineWidth=2; ctx.strokeRect(x+4,y+4,24,24); }
+            else if (t===0) { ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(x+16,y+16,2,0,7); ctx.fill(); }
+            else if (t===2) { ctx.fillStyle="#fff"; ctx.shadowBlur=10; ctx.shadowColor="#fff"; ctx.beginPath(); ctx.arc(x+16,y+16,6,0,7); ctx.fill(); ctx.shadowBlur=0; }
+        }
+    }
+    // Warp Gate Decor
+    ctx.strokeStyle="#ff00ff"; ctx.lineWidth=3;
+    if (Math.floor(stepCounter/15)%2===0) {
+        ctx.strokeRect(0, 9*tileSize+2, 8, 28); ctx.strokeRect(canvas.width-8, 9*tileSize+2, 8, 28);
+    }
+    // Entities
+    ctx.fillStyle="#ff0"; ctx.beginPath(); ctx.arc(player.x+16, player.y+16, 12, (0.2+Math.sin(stepCounter*0.3)*0.1)*Math.PI, (1.8-Math.sin(stepCounter*0.3)*0.1)*Math.PI); ctx.lineTo(player.x+16, player.y+16); ctx.fill();
+    ghosts.forEach(g => {
+        ctx.fillStyle = powerMode ? (powerTimer<180 && Math.floor(powerTimer/10)%2===0 ? "#fff":"#00f") : g.color;
+        ctx.beginPath(); ctx.arc(g.x+16, g.y+14, 12, Math.PI, 0); ctx.fillRect(g.x+4, g.y+14, 24, 14); ctx.fill();
+    });
+}
+
+function loop(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
+    lastTime = timestamp;
+    drawBackground();
+    if (gameActive) {
+        updateEntity(player, PLAYER_PIXEL_SPEED * dt, false);
+        if (powerMode) { powerTimer--; if (powerTimer <= 0) powerMode = false; }
+        ghosts.forEach(g => {
+            updateEntity(g, (powerMode ? GHOST_PIXEL_SPEED * 0.5 : GHOST_PIXEL_SPEED) * dt, true);
+            if (Math.hypot(player.x-g.x, player.y-g.y) < 22) {
+                if (powerMode) { 
+                    g.x=9*tileSize; g.y=9*tileSize; score+=200; 
+                    playExtSound('eatGhost');
+                } else { 
+                    gameActive=false; 
+                    document.getElementById("game-overlay").style.display="flex"; 
+                }
+            }
+        });
+        if (!maze.flat().includes(0) && !maze.flat().includes(2)) { 
+            gameActive=false; 
+            playExtSound('win');
+            document.getElementById("overlay-text").innerText="YOU WIN!"; 
+            document.getElementById("game-overlay").style.display="flex"; 
+        }
+    }
+    drawGame(); document.getElementById("score").innerText = score;
+    stepCounter++; requestAnimationFrame(loop);
+}
+
+document.getElementById("click-to-start").addEventListener('mousedown', async (e) => {
+    e.target.style.pointerEvents = "none";
+    await initAudio(); 
+    e.target.style.display = "none"; 
+    gameActive = true;
+    lastTime = performance.now();
+});
+
+document.getElementById("mute-btn").addEventListener('click', (e) => {
+    isMuted = !isMuted; 
+    if (isMuted && bgmSource) { try { bgmSource.stop(); } catch(e){} }
+    else if (!isMuted) startBGM();
+    e.target.innerText = isMuted ? "SOUND: OFF" : "SOUND: ON";
+});
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp") { player.nextDx = 0; player.nextDy = -1; }
+    if (e.key === "ArrowDown") { player.nextDx = 0; player.nextDy = 1; }
+    if (e.key === "ArrowLeft") { player.nextDx = -1; player.nextDy = 0; }
+    if (e.key === "ArrowRight") { player.nextDx = 1; player.nextDy = 0; }
+});
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
